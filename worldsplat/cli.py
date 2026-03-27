@@ -24,7 +24,7 @@ def cmd_video(args):
     """Generate video frames from a text prompt (Step 1 only)."""
     from worldsplat.video_gen import generate_video
 
-    frames_dir = generate_video(
+    kwargs = dict(
         prompt=args.prompt,
         image=args.image,
         output_dir=args.output,
@@ -35,6 +35,9 @@ def cmd_video(args):
         guidance_scale=args.guidance,
         seed=args.seed,
     )
+    if args.model:
+        kwargs["model_id"] = args.model
+    frames_dir = generate_video(**kwargs)
     print(f"\nDone! Frames saved to: {frames_dir}")
 
 
@@ -79,6 +82,9 @@ def main():
         "video", help="Generate video frames from a text prompt (Step 1 only)"
     )
     video_parser.add_argument("prompt", help="Text description of the scene")
+    video_parser.add_argument(
+        "--model", default=None, help="HuggingFace model ID (default: Wan2.2-TI2V-5B)"
+    )
     video_parser.add_argument(
         "--image", type=Path, default=None, help="Input image for image-to-video mode"
     )
