@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Model weights (downloaded at runtime, don't commit)
+models/
+*.safetensors
+*.bin
+*.ckpt
+
+# Output artifacts
+output/
+
+# Logs
+*.log
+
+# MCP config (contains API keys)
+.mcp.json
