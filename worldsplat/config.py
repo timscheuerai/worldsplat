@@ -12,11 +12,12 @@ VIDEO_MODEL_ID = "Wan-AI/Wan2.2-TI2V-5B-Diffusers"
 VIDEO_MODEL_ID_SMALL = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
 
 # Number of frames to generate
-VIDEO_NUM_FRAMES = 81  # ~3.4 seconds at 24fps
+VIDEO_NUM_FRAMES = 33  # ~1.4 seconds at 24fps (fits 24GB VRAM)
 
-# Video resolution (720p for Wan 2.2)
-VIDEO_HEIGHT = 720
-VIDEO_WIDTH = 1280
+# Video resolution — 480p default to fit 24GB GPUs.
+# Use --height 720 --width 1280 on 48GB+ GPUs.
+VIDEO_HEIGHT = 480
+VIDEO_WIDTH = 832
 
 # Inference steps (more = better quality, slower)
 VIDEO_NUM_INFERENCE_STEPS = 50
