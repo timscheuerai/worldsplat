@@ -164,8 +164,17 @@ def generate_video(
     logger.info(f"Generated {len(frames)} frames.")
 
     # Save each frame as PNG
+    import numpy as np
+
     for i, frame in enumerate(frames):
         if not isinstance(frame, Image.Image):
+            # Convert float32 arrays to uint8
+            if hasattr(frame, "numpy"):
+                frame = frame.numpy()
+            if frame.dtype != np.uint8:
+                frame = (np.clip(frame, 0, 1) * 255).astype(np.uint8)
+            # Squeeze any extra dimensions (e.g. batch dim)
+            frame = np.squeeze(frame)
             frame = Image.fromarray(frame)
         frame_path = frames_dir / f"frame_{i:04d}.png"
         frame.save(frame_path)
