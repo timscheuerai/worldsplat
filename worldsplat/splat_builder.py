@@ -169,8 +169,18 @@ def load_colmap_data(colmap_dir: Path, frames_dir: Path, max_init_points: int = 
 
     dists = np.linalg.norm(camtoworlds[:, :3, 3], axis=1)
     scene_scale = dists.max()
+    if scene_scale < 1e-6:
+        scene_scale = 1.0
     camtoworlds[:, :3, 3] /= scene_scale
     points /= scene_scale
+
+    # Also filter points that are far from the cameras (outliers)
+    point_dists = np.linalg.norm(points, axis=1)
+    inlier_mask = point_dists < 10.0  # keep points within 10x camera sphere
+    if inlier_mask.sum() > 1000:
+        points = points[inlier_mask]
+        points_rgb = points_rgb[inlier_mask]
+        logger.info(f"Filtered outlier points: {inlier_mask.sum()} kept of {len(inlier_mask)}")
 
     logger.info(f"Scene scale: {scene_scale:.4f}, centered at {scene_center}")
 
@@ -193,6 +203,7 @@ def init_gaussians(
     init_opacity: float = 0.1,
     init_scale: float = 1.0,
     sh_degree: int = 3,
+    scene_scale: float = 1.0,
     device: str = "cuda",
 ) -> tuple:
     """Initialize Gaussian parameters from a point cloud.
@@ -225,8 +236,9 @@ def init_gaussians(
     ).to(device)
 
     # Learning rates (from gsplat defaults)
+    # means LR is scaled by scene_scale to handle different scene sizes
     lr_config = {
-        "means": 1.6e-4,
+        "means": 1.6e-4 * scene_scale,
         "scales": 5e-3,
         "quats": 1e-3,
         "opacities": 5e-2,
@@ -271,7 +283,8 @@ def train_splats(
     logger.info(f"Initializing {len(data['points'])} Gaussians from point cloud...")
     splats, optimizers = init_gaussians(
         data["points"], data["points_rgb"],
-        sh_degree=sh_degree, device=device,
+        sh_degree=sh_degree, scene_scale=data.get("scene_scale", 1.0),
+        device=device,
     )
     logger.info(f"Initial Gaussians: {len(splats['means'])}")
 
@@ -340,9 +353,9 @@ def train_splats(
 
         loss = (1.0 - ssim_lambda) * l1loss + ssim_lambda * ssimloss
 
-        # Regularization
-        loss = loss + 0.01 * torch.sigmoid(splats["opacities"]).mean()
-        loss = loss + 0.01 * torch.exp(splats["scales"]).mean()
+        # Light regularization (avoid killing opacity/scale)
+        loss = loss + 1e-3 * torch.sigmoid(splats["opacities"]).mean()
+        loss = loss + 1e-3 * torch.exp(splats["scales"]).mean()
 
         loss.backward()
 
@@ -403,28 +416,17 @@ def _ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int = 11) -> torc
 
 
 def export_ply(splats: torch.nn.ParameterDict, output_path: Path):
-    """Export trained Gaussians to PLY format compatible with viewers."""
-    try:
-        from gsplat import export_splats
-        export_splats(
-            means=splats["means"],
-            scales=splats["scales"],
-            quats=splats["quats"],
-            opacities=splats["opacities"],
-            sh0=splats["sh0"],
-            shN=splats["shN"],
-            format="ply",
-            save_to=str(output_path),
-        )
-    except ImportError:
-        # Fallback: manual PLY export
-        _export_ply_manual(splats, output_path)
-
+    """Export trained Gaussians to standard 3DGS PLY format compatible with viewers."""
+    _export_ply_manual(splats, output_path)
     logger.info(f"Exported {len(splats['means'])} Gaussians to {output_path}")
 
 
 def _export_ply_manual(splats: torch.nn.ParameterDict, output_path: Path):
-    """Manual PLY export (fallback if gsplat.export_splats is unavailable)."""
+    """Export Gaussians in standard 3DGS PLY format (matching INRIA convention).
+
+    Property order: xyz, normals, f_dc, f_rest, opacity, scale, rot.
+    Opacity in logit space, scales in log space (as expected by viewers).
+    """
     means = splats["means"].detach().cpu().numpy()
     scales = splats["scales"].detach().cpu().numpy()
     quats = splats["quats"].detach().cpu().numpy()
@@ -437,43 +439,53 @@ def _export_ply_manual(splats: torch.nn.ParameterDict, output_path: Path):
     # Normalize quaternions
     quats = quats / np.linalg.norm(quats, axis=-1, keepdims=True)
 
-    # Build PLY header
-    sh_coeffs = np.concatenate([sh0.reshape(N, -1), shN.reshape(N, -1)], axis=-1)
-    n_sh = sh_coeffs.shape[1]
+    # SH coefficients: f_dc (3) + f_rest (K*3)
+    f_dc = sh0.reshape(N, 3)
+    f_rest = shN.reshape(N, -1)
+    n_rest = f_rest.shape[1]
 
-    header = "ply\nformat binary_little_endian 1.0\n"
-    header += f"element vertex {N}\n"
-    header += "property float x\nproperty float y\nproperty float z\n"
-    for i in range(3):
-        header += f"property float scale_{i}\n"
-    header += "property float opacity\n"
-    header += "property float rot_0\nproperty float rot_1\nproperty float rot_2\nproperty float rot_3\n"
-    for i in range(n_sh):
-        header += f"property float f_rest_{i}\n" if i >= 3 else f"property float f_dc_{i}\n"
-    header += "end_header\n"
+    # Standard 3DGS header: xyz, normals, f_dc, f_rest, opacity, scale, rot
+    header_lines = [
+        "ply",
+        "format binary_little_endian 1.0",
+        f"element vertex {N}",
+        "property float x", "property float y", "property float z",
+        "property float nx", "property float ny", "property float nz",
+        "property float f_dc_0", "property float f_dc_1", "property float f_dc_2",
+    ]
+    for i in range(n_rest):
+        header_lines.append(f"property float f_rest_{i}")
+    header_lines.extend([
+        "property float opacity",
+        "property float scale_0", "property float scale_1", "property float scale_2",
+        "property float rot_0", "property float rot_1", "property float rot_2", "property float rot_3",
+        "end_header",
+    ])
+    header = "\n".join(header_lines) + "\n"
+
+    # Assemble vertex data as contiguous array for fast write
+    normals = np.zeros((N, 3), dtype=np.float32)
+    vertex_data = np.hstack([
+        means,                                    # xyz
+        normals,                                  # normals
+        f_dc,                                     # f_dc_0..2
+        f_rest,                                   # f_rest_0..N
+        opacities.reshape(N, 1),                  # opacity (logit)
+        scales,                                   # scale_0..2 (log)
+        quats,                                    # rot_0..3
+    ]).astype(np.float32)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "wb") as f:
         f.write(header.encode())
-        for i in range(N):
-            # position
-            f.write(means[i].astype(np.float32).tobytes())
-            # scale (log space)
-            f.write(scales[i].astype(np.float32).tobytes())
-            # opacity (logit space)
-            f.write(np.array([opacities[i]], dtype=np.float32).tobytes())
-            # rotation quaternion [w, x, y, z]
-            q = quats[i]
-            f.write(np.array([q[0], q[1], q[2], q[3]], dtype=np.float32).tobytes())
-            # SH coefficients
-            f.write(sh_coeffs[i].astype(np.float32).tobytes())
+        f.write(vertex_data.tobytes())
 
 
 def build_splats(
     frames_dir: Path,
     poses_dir: Path,
     output_dir: Path,
-    max_steps: int = 2000,
+    max_steps: int = 7000,
     sh_degree: int = 3,
     device: str = DEVICE,
 ) -> Path:

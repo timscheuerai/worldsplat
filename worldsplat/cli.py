@@ -170,8 +170,8 @@ def main():
         help="Scene directory containing frames/ and sparse/ subdirs",
     )
     splat_parser.add_argument(
-        "--steps", type=int, default=2000,
-        help="Training iterations (default 2000)",
+        "--steps", type=int, default=7000,
+        help="Training iterations (default 7000)",
     )
     splat_parser.set_defaults(func=cmd_splat)
 

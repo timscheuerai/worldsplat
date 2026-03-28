@@ -29,7 +29,7 @@ VIEWER_HTML = """<!DOCTYPE html>
   }
   #info h3 { margin-bottom: 4px; }
   #info p { opacity: 0.7; font-size: 11px; }
-  iframe { width: 100vw; height: 100vh; border: none; }
+  canvas { width: 100vw; height: 100vh; display: block; }
 </style>
 </head>
 <body>
@@ -37,7 +37,25 @@ VIEWER_HTML = """<!DOCTYPE html>
   <h3>WorldSplat Viewer</h3>
   <p>Click & drag to rotate. Scroll to zoom. WASD to move.</p>
 </div>
-<iframe src="https://antimatter15.com/splat/#SPLAT_URL"></iframe>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.164.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module">
+import * as GaussianSplats3D from 'https://unpkg.com/@mkkellogg/gaussian-splats-3d@0.4.5/build/gaussian-splats-3d.module.js';
+
+const viewer = new GaussianSplats3D.Viewer({
+  cameraUp: [0, -1, 0],
+  initialCameraPosition: [0, -2, -6],
+  initialCameraLookAt: [0, 0, 0],
+  selfDrivenMode: true,
+});
+viewer.addSplatScene('SPLAT_URL', { splatAlphaRemovalThreshold: 5 })
+  .then(() => { viewer.start(); });
+</script>
 </body>
 </html>"""
 
@@ -75,9 +93,10 @@ def launch_viewer(ply_path: Path, port: int = 8080, open_browser: bool = True):
             pass  # Suppress request logs
 
         def end_headers(self):
-            # CORS headers so antimatter15/splat can fetch the file
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Access-Control-Allow-Methods", "GET")
+            self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+            self.send_header("Cross-Origin-Embedder-Policy", "credentialless")
             super().end_headers()
 
     server = http.server.HTTPServer(("0.0.0.0", port), QuietHandler)
