@@ -364,7 +364,7 @@ def train_splats(
             state=strategy_state,
             step=step,
             info=info,
-            packed=False,
+            packed=True,
         )
 
     logger.info(f"Training complete. Final Gaussians: {len(splats['means'])}")
