@@ -32,10 +32,22 @@ def rgb_to_sh(rgb: torch.Tensor) -> torch.Tensor:
 
 
 def knn(points: torch.Tensor, k: int) -> torch.Tensor:
-    """Find k nearest neighbor distances for each point."""
-    dists = torch.cdist(points, points)  # [N, N]
-    dists, _ = dists.topk(k, dim=-1, largest=False)  # [N, k]
-    return dists
+    """Find k nearest neighbor distances for each point (batched for large N)."""
+    N = points.shape[0]
+    if N <= 20000:
+        dists = torch.cdist(points, points)
+        dists, _ = dists.topk(k, dim=-1, largest=False)
+        return dists
+
+    # For large point clouds, batch the computation
+    batch_size = 4096
+    all_dists = []
+    for i in range(0, N, batch_size):
+        batch = points[i : i + batch_size]
+        d = torch.cdist(batch, points)  # [batch, N]
+        topk, _ = d.topk(k, dim=-1, largest=False)
+        all_dists.append(topk)
+    return torch.cat(all_dists, dim=0)
 
 
 def _parse_colmap_cameras(cameras_path: Path) -> dict:
@@ -88,7 +100,7 @@ def _parse_colmap_points3d(points3d_path: Path) -> tuple:
     return np.array(positions, dtype=np.float32), np.array(colors, dtype=np.uint8)
 
 
-def load_colmap_data(colmap_dir: Path, frames_dir: Path) -> dict:
+def load_colmap_data(colmap_dir: Path, frames_dir: Path, max_init_points: int = 50000) -> dict:
     """Load COLMAP text-format data and images into tensors for training.
 
     Returns dict with: camtoworlds, Ks, images, points, points_rgb, image_names
@@ -96,6 +108,13 @@ def load_colmap_data(colmap_dir: Path, frames_dir: Path) -> dict:
     cameras = _parse_colmap_cameras(colmap_dir / "cameras.txt")
     images_data = _parse_colmap_images(colmap_dir / "images.txt")
     points, points_rgb = _parse_colmap_points3d(colmap_dir / "points3D.txt")
+
+    # Subsample points if too many (KNN on 200K+ points is very slow)
+    if len(points) > max_init_points:
+        indices = np.random.choice(len(points), max_init_points, replace=False)
+        points = points[indices]
+        points_rgb = points_rgb[indices]
+        logger.info(f"Subsampled initial points: {len(points)}")
 
     # Sort by image name for consistency
     images_data.sort(key=lambda x: x[9])
