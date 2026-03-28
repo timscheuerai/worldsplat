@@ -1,9 +1,11 @@
 """WorldSplat CLI — one command to generate navigable 3D worlds.
 
 Usage:
-    worldsplat video "a cabin in the mountains"     # Step 1 only: text → video frames
+    worldsplat video "a cabin in the mountains"     # Step 1: text → video frames
+    worldsplat pose output/cabin/frames/             # Step 2: frames → camera poses
+    worldsplat splat output/cabin/                   # Step 3: posed frames → 3D Gaussian Splats
+    worldsplat view output/cabin/model.ply           # Step 4: view the 3D scene
     worldsplat generate "a cabin in the mountains"   # Full pipeline: text → 3D scene
-    worldsplat generate --fast "a cabin"             # Fast path via DiffSplat
 """
 
 import argparse
@@ -53,6 +55,33 @@ def cmd_pose(args):
         scene_graph=args.scene_graph,
     )
     print(f"\nDone! COLMAP poses saved to: {colmap_dir}")
+
+
+def cmd_splat(args):
+    """Build Gaussian Splats from posed video frames (Step 3 only)."""
+    from worldsplat.splat_builder import build_splats
+
+    frames_dir = args.scene_dir / "frames"
+    poses_dir = args.scene_dir / "sparse"
+    if not frames_dir.exists():
+        raise FileNotFoundError(f"Frames directory not found: {frames_dir}")
+    if not poses_dir.exists():
+        raise FileNotFoundError(f"COLMAP poses not found: {poses_dir}")
+
+    ply_path = build_splats(
+        frames_dir=frames_dir,
+        poses_dir=poses_dir,
+        output_dir=args.scene_dir,
+        max_steps=args.steps,
+    )
+    print(f"\nDone! Gaussian Splat saved to: {ply_path}")
+
+
+def cmd_view(args):
+    """View a Gaussian Splat .ply file in the browser (Step 4 only)."""
+    from worldsplat.viewer import launch_viewer
+
+    launch_viewer(ply_path=args.ply_path, port=args.port)
 
 
 def cmd_generate(args):
@@ -131,6 +160,32 @@ def main():
         help="Pair matching strategy (default: swin-5)",
     )
     pose_parser.set_defaults(func=cmd_pose)
+
+    # --- worldsplat splat ---
+    splat_parser = subparsers.add_parser(
+        "splat", help="Build Gaussian Splats from posed frames (Step 3 only)"
+    )
+    splat_parser.add_argument(
+        "scene_dir", type=Path,
+        help="Scene directory containing frames/ and sparse/ subdirs",
+    )
+    splat_parser.add_argument(
+        "--steps", type=int, default=2000,
+        help="Training iterations (default 2000)",
+    )
+    splat_parser.set_defaults(func=cmd_splat)
+
+    # --- worldsplat view ---
+    view_parser = subparsers.add_parser(
+        "view", help="View a Gaussian Splat .ply file in the browser"
+    )
+    view_parser.add_argument(
+        "ply_path", type=Path, help="Path to the .ply file",
+    )
+    view_parser.add_argument(
+        "--port", type=int, default=8080, help="Port for the viewer server",
+    )
+    view_parser.set_defaults(func=cmd_view)
 
     # --- worldsplat generate ---
     gen_parser = subparsers.add_parser(

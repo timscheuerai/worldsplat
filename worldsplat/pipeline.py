@@ -1,9 +1,6 @@
 """Pipeline orchestrator: chains all steps together.
 
 Text → Video → Poses → Gaussian Splats → Viewer
-
-Currently Step 1 (video) is implemented. Steps 2-4 are stubs that will be
-filled in during subsequent development sessions.
 """
 
 import logging
@@ -40,7 +37,6 @@ def run_pipeline(
 
     if fast:
         logger.info("Fast mode: using DiffSplat (not yet implemented)")
-        # TODO: Implement DiffSplat fast path
         raise NotImplementedError(
             "DiffSplat fast path is not yet implemented. "
             "Run without --fast to use the standard pipeline."
@@ -84,22 +80,14 @@ def estimate_poses(frames_dir: Path, output_dir: Path) -> Path:
 
 
 def build_splats(frames_dir: Path, poses_dir: Path, output_dir: Path) -> Path:
-    """Step 3: Build Gaussian Splats from posed frames using gsplat.
+    """Step 3: Build Gaussian Splats from posed frames using gsplat."""
+    from worldsplat.splat_builder import build_splats as _build_splats
 
-    TODO: Implement in splat_builder.py
-    """
-    raise NotImplementedError(
-        "Gaussian Splat reconstruction (gsplat) is not yet implemented.\n"
-        "This will be added in a future development session."
-    )
+    return _build_splats(frames_dir, poses_dir, output_dir)
 
 
 def launch_viewer(ply_path: Path):
-    """Step 4: Launch web viewer for the generated Gaussian Splats.
+    """Step 4: Launch web viewer for the generated Gaussian Splats."""
+    from worldsplat.viewer import launch_viewer as _launch_viewer
 
-    TODO: Implement in viewer.py
-    """
-    raise NotImplementedError(
-        "Web viewer is not yet implemented.\n"
-        "For now, open the .ply file in SuperSplat: https://superspl.at/editor"
-    )
+    _launch_viewer(ply_path)
