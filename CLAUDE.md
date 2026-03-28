@@ -10,35 +10,24 @@ Text prompt → Wan 2.2 video → MASt3R poses → gsplat reconstruction → web
 
 ## Architecture
 
-- `worldsplat/video_gen.py` — Step 1: Text/image → video frames via Wan2.2-TI2V-5B (HuggingFace Diffusers)
+- `worldsplat/video_gen.py` — Step 1: Text/image → video frames via Wan2.2-TI2V-5B
 - `worldsplat/pose_estimation.py` — Step 2: Frames → COLMAP poses via MASt3R
-- `worldsplat/splat_builder.py` — Step 3: STUB. Posed frames → Gaussian Splats via gsplat
-- `worldsplat/viewer.py` — Step 4: STUB. Web viewer via antimatter15/splat
+- `worldsplat/splat_builder.py` — Step 3: Posed frames → Gaussian Splats via gsplat
+- `worldsplat/viewer.py` — Step 4: Web viewer (GaussianSplats3D, local)
 - `worldsplat/pipeline.py` — Orchestrator chaining steps 1-4
-- `worldsplat/cli.py` — CLI: `worldsplat video "prompt"`, `worldsplat pose <frames_dir>`, and `worldsplat generate "prompt"`
-- `worldsplat/config.py` — Model IDs, defaults, device settings
+- `worldsplat/cli.py` — CLI with subcommands: video, pose, splat, view, generate
 
-## Key decisions
+## Current status (2026-03-28)
 
-- **Video model:** Wan2.2-TI2V-5B (not CogVideoX). Best VBench score (84.7%), supports both text→video AND image→video, fits RTX 4090 24GB.
-- **Pose estimation:** MASt3R (CC BY-NC-SA 4.0, non-commercial). Outputs COLMAP format. 10-50x faster than traditional SfM.
-- **3D reconstruction:** gsplat (MIT). Standard Gaussian Splatting library.
-- **Viewer:** antimatter15/splat (pure WebGL, zero deps).
-
-## Current status
-
-- Phase 1 scaffold: COMPLETE (all files created)
-- Video generation module: COMPLETE (untested — needs GPU)
-- Pose estimation: COMPLETE (untested — needs GPU + MASt3R install)
-- 3D reconstruction: STUB
-- Web viewer: STUB
-- End-to-end pipeline: wired but steps 2-4 raise NotImplementedError
+- Phase 1 (video → poses → gsplat → viewer): COMPLETE, tested end-to-end
+- Produces flat "diorama" from forward-facing video (expected limitation)
+- See `learnings.md` for detailed technical learnings and architecture research
 
 ## RunPod setup
 
-- Pod `jq16nivc6tcx31` exists (RTX 3090, $0.22/hr) — may need to be recreated
+- Pods `e8s74v1ad6r64h` and `nbfrny2qemg4mk` stopped (RTX 4090, $0.59/hr)
 - RunPod MCP server configured in `.mcp.json`
-- Use RunPod MCP tools to manage pods directly
+- Requires torch >= 2.5.1, diffusers 0.37+, transformers < 5
 
 ## Development workflow
 
@@ -47,15 +36,12 @@ Text prompt → Wan 2.2 video → MASt3R poses → gsplat reconstruction → web
 3. `pip install -e .` on the pod
 4. Test with `worldsplat video "prompt"`
 
-## Plan file
+## Next steps: Architecture v2 (see learnings.md for full research)
 
-Full implementation plan at `.claude/plans/soft-jumping-lemur.md`
+SV3D is object-only (not for scenes). Revised plan:
 
-## Next steps (in order)
-
-1. Test video generation on RunPod (run `worldsplat video "a narrow Tokyo alley"`)
-2. Test pose estimation on RunPod (run `worldsplat pose output/<scene>/frames/`)
-3. Implement Gaussian Splat reconstruction (gsplat) in `splat_builder.py`
-4. Implement web viewer in `viewer.py`
-5. Wire end-to-end pipeline
-6. Add DiffSplat fast path (`--fast` flag)
+1. **Integrate WorldGen as default** (Apache 2.0, scene-level, seconds, 10-24GB)
+2. **Add DiffSplat `--fast`** (MIT, object-level, 1-2s feed-forward)
+3. **Add LucidDreamer `--quality`** (CC-BY-NC-SA, scene-level, ~35min iterative)
+4. **Keep current pipeline as `--video`** fallback
+5. **Fix web viewer** — self-contained local renderer
