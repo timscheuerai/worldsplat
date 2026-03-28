@@ -38,10 +38,29 @@ def _check_mast3r_installed():
 
 
 def _load_model(model_id=POSE_MODEL_ID, device=DEVICE):
-    """Load the MASt3R model."""
+    """Load the MASt3R model.
+
+    Prefers a local .pth checkpoint (avoids HuggingFace from_pretrained bugs).
+    Falls back to HuggingFace if no local file is found.
+    """
     from mast3r.model import AsymmetricMASt3R
 
-    logger.info(f"Loading MASt3R model: {model_id}")
+    # Check for local checkpoint first (avoids HF config compatibility issues)
+    local_paths = [
+        Path("/workspace/hf_cache/checkpoints") / f"{model_id.split('/')[-1]}.pth",
+        Path("checkpoints") / f"{model_id.split('/')[-1]}.pth",
+    ]
+
+    for local_path in local_paths:
+        if local_path.is_file():
+            logger.info(f"Loading MASt3R from local checkpoint: {local_path}")
+            from mast3r.model import load_model as mast3r_load_model
+            model = mast3r_load_model(str(local_path), device=device)
+            logger.info("MASt3R model loaded.")
+            return model
+
+    # Fall back to HuggingFace
+    logger.info(f"Loading MASt3R model from HuggingFace: {model_id}")
     model = AsymmetricMASt3R.from_pretrained(model_id).to(device)
     logger.info("MASt3R model loaded.")
     return model

@@ -30,7 +30,7 @@ VIDEO_FLOW_SHIFT = 5.0
 
 # --- Pose estimation ---
 # MASt3R model (set up separately via git clone)
-POSE_MODEL_ID = "naver/MASt3R_ViTLarge_BaseDecoder_512_catml"
+POSE_MODEL_ID = "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
 
 # --- Output paths ---
 DEFAULT_OUTPUT_DIR = Path("output")
