@@ -34,20 +34,17 @@ def rgb_to_sh(rgb: torch.Tensor) -> torch.Tensor:
 def knn(points: torch.Tensor, k: int) -> torch.Tensor:
     """Find k nearest neighbor distances for each point (batched for large N)."""
     N = points.shape[0]
-    if N <= 20000:
-        dists = torch.cdist(points, points)
-        dists, _ = dists.topk(k, dim=-1, largest=False)
-        return dists
-
-    # For large point clouds, batch the computation
-    batch_size = 4096
+    # Use CPU to avoid GPU OOM on large point clouds
+    points_cpu = points.cpu()
+    batch_size = 2048
     all_dists = []
     for i in range(0, N, batch_size):
-        batch = points[i : i + batch_size]
-        d = torch.cdist(batch, points)  # [batch, N]
+        batch = points_cpu[i : i + batch_size]
+        d = torch.cdist(batch, points_cpu)  # [batch, N]
         topk, _ = d.topk(k, dim=-1, largest=False)
         all_dists.append(topk)
-    return torch.cat(all_dists, dim=0)
+    result = torch.cat(all_dists, dim=0)
+    return result.to(points.device)
 
 
 def _parse_colmap_cameras(cameras_path: Path) -> dict:
@@ -100,7 +97,7 @@ def _parse_colmap_points3d(points3d_path: Path) -> tuple:
     return np.array(positions, dtype=np.float32), np.array(colors, dtype=np.uint8)
 
 
-def load_colmap_data(colmap_dir: Path, frames_dir: Path, max_init_points: int = 50000) -> dict:
+def load_colmap_data(colmap_dir: Path, frames_dir: Path, max_init_points: int = 30000) -> dict:
     """Load COLMAP text-format data and images into tensors for training.
 
     Returns dict with: camtoworlds, Ks, images, points, points_rgb, image_names
