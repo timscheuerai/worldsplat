@@ -340,6 +340,10 @@ def train_splats(
 
         loss = (1.0 - ssim_lambda) * l1loss + ssim_lambda * ssimloss
 
+        # Regularization
+        loss = loss + 0.01 * torch.sigmoid(splats["opacities"]).mean()
+        loss = loss + 0.01 * torch.exp(splats["scales"]).mean()
+
         loss.backward()
 
         pbar.set_description(
@@ -360,6 +364,7 @@ def train_splats(
             state=strategy_state,
             step=step,
             info=info,
+            packed=False,
         )
 
     logger.info(f"Training complete. Final Gaussians: {len(splats['means'])}")
